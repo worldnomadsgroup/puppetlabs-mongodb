@@ -78,13 +78,19 @@ class Puppet::Provider::Mongodb < Puppet::Provider
     ssl_mode.nil? ? false : ssl_mode != 'disabled'
   end
 
+  def self.ssl_is_required(config=nil)
+    config ||= get_mongo_conf
+    ssl_mode = config.fetch('ssl')
+    ssl_mode.nil? ? false : ssl_mode == 'requireSSL'
+  end
+
   def self.mongo_cmd(db, host, cmd)
     config = get_mongo_conf
 
-    args = [db, '--quiet', '--host', host]
+    args = [db.gsub('\$', '\\\$'), '--quiet', '--host', host]
     args.push('--ipv6') if ipv6_is_enabled(config)
 
-    if ssl_is_enabled(config)
+    if ssl_is_required(config)
       args.push('--ssl')
       args += ['--sslPEMKeyFile', config['sslcert']]
 
@@ -137,7 +143,9 @@ class Puppet::Provider::Mongodb < Puppet::Provider
     db = 'admin'
     out = mongo_cmd(db, get_conn_string, cmd_ismaster)
     out.gsub!(/ObjectId\(([^)]*)\)/, '\1')
-    out.gsub!(/ISODate\((.+?)\)/, '\1 ')
+    out.gsub!(/Timestamp\((.+?), (.+?)\)/, '{ "t": \1, "i": \2 }')
+    out.gsub!(/NumberLong\((.+?)\)/, '\1')
+    out.gsub!(/ISODate\((.+?)\)/, '\1')
     out.gsub!(/^Error\:.+/, '')
     res = JSON.parse out
 
@@ -154,7 +162,7 @@ class Puppet::Provider::Mongodb < Puppet::Provider
   end
 
   # Mongo Command Wrapper
-  def self.mongo_eval(cmd, db = 'admin', retries = 10, host = nil)
+  def self.mongo_eval(cmd, db = 'admin', retries = 10, host = nil, trimerroroutput = true)
     retry_count = retries
     retry_sleep = 3
     if mongorc_file
@@ -184,7 +192,9 @@ class Puppet::Provider::Mongodb < Puppet::Provider
     ['ObjectId','NumberLong'].each do |data_type|
       out.gsub!(/#{data_type}\(([^)]*)\)/, '\1')
     end
-    out.gsub!(/^Error\:.+/, '')
+    if trimerroroutput
+      out.gsub!(/^Error\:.+/, '')
+    end
     out
   end
 

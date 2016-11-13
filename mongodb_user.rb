@@ -6,8 +6,7 @@ Puppet::Type.newtype(:mongodb_user) do
   def initialize(*args)
     super
     # Sort roles array before comparison.
-    self[:roles] = Array(self[:roles])\
-      .sort_by! { |entry| entry.kind_of?(String) ? ['', entry] : (entry.kind_of?(NilClass) ? ['', ''] : [entry['db'], entry['role']]) }
+    self[:roles] = Array(self[:roles]).sort_by! { |entry| entry.kind_of?(String) ? ['', entry] : [entry.db, entry.role] }
   end
 
   newparam(:name, :namevar=>true) do
@@ -38,37 +37,31 @@ Puppet::Type.newtype(:mongodb_user) do
 
   newproperty(:roles, :array_matching => :all) do
     desc "The user's roles."
-    defaultto ['dbAdmin']
+    defaultto [{ role: 'dbAdmin', db: '' }]
+#   TODO: How to validate string or hash of Role and DB?
+#    newvalue(/^\w+$/)
+
+    munge do |value|
+      if value.kind_of?(String)
+        { role: value, db: '' }
+      else
+        value
+      end
+    end
 
     def insync?(is)
       raise Puppet::Error, "Invalid value for attribute :roles, must be an array" unless @should.is_a?(Array)
 
-      if is == nil
-        if @should.count { |entry| entry != nil } > 0
-          return false
-        else @should.count { |entry| entry != nil } == 0
-          return true
-        end
-      end
+      Puppet.debug 'Comparing #{@should.inspect} to #{is.inspect}'
 
-      sorted_should = @should\
-        .drop_while { |entry| entry == nil }\
-        .sort_by { |entry| entry.kind_of?(String) ? ['', entry] : (entry.kind_of?(NilClass) ? ['', ''] : [entry['db'], entry['role']]) }
-      sorted_is = is\
-        .drop_while { |entry| entry == nil }\
-        .sort_by { |entry| entry.kind_of?(String) ? ['', entry] : (entry.kind_of?(NilClass) ? ['', ''] : [entry['db'], entry['role']]) }
+      sorted_should = @should.sort_by { |entry| entry.kind_of?(String) ? ['', entry] : [entry[:db], entry[:role]] }
+      sorted_is = is.sort_by { |entry| entry.kind_of?(String) ? ['', entry] : [entry[:db], entry[:role]] }
 
       (sorted_is.length == sorted_should.length) and (sorted_is.zip(sorted_should).all? { |a, b| role_matches?(a, b) })
     end
 
     def role_matches?(current, desired)
-      if current.kind_of?(String) and desired.kind_of?(String)
-        current.casecmp(desired) == 0
-      elsif current.kind_of?(Hash) and desired.kind_of?(Hash)
-        current['db'].casecmp(desired['db']) == 0 and current['role'].casecmp(desired['role']) == 0
-      else
-        false
-      end
+      current[:db].to_s.casecmp(desired[:db].to_s) == 0 and current[:role].to_s.casecmp(desired[:role].to_s) == 0
     end
 
     # Pretty output for arrays.

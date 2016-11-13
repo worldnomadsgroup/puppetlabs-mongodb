@@ -31,9 +31,19 @@ describe Puppet::Type.type(:mongodb_user) do
     expect(@user[:roles]).to eq(['dbAdmin'])
   end
 
-  it 'should accept a roles array' do
-    @user[:roles] = ['role1', 'role2']
-    expect(@user[:roles]).to eq(['role1', 'role2'])
+  it 'should accept a String roles array' do
+    @user[:roles] = [ 'role1', 'role2' ]
+    expect(@user[:roles]).to eq([ 'role1', 'role2' ])
+  end
+
+  it 'should accept a Hash roles array' do
+    @user[:roles] = [ { 'role' => 'role1', 'db' => 'admin' }, { 'role' => 'role2', 'db' => 'admin' } ]
+    expect(@user[:roles]).to eq([ { 'role' => 'role1', 'db' => 'admin' }, { 'role' => 'role2', 'db' => 'admin' } ])
+  end
+
+  it 'should accept a mixed roles array' do
+    @user[:roles] = [ { 'role' => 'role1', 'db' => 'admin' }, 'role2' ]
+    expect(@user[:roles]).to eq([ { 'role' => 'role1', 'db' => 'admin' }, 'role2' ])
   end
 
   it 'should require a name' do
@@ -54,14 +64,76 @@ describe Puppet::Type.type(:mongodb_user) do
     }.to raise_error(Puppet::Error, 'Property \'password_hash\' must be set. Use mongodb_password() for creating hash.')
   end
 
-  it 'should sort roles' do
+  it 'should sort databaseless roles' do
     # Reinitialize type with explicit unsorted roles.
     @user = Puppet::Type.type(:mongodb_user).new(
               :name => 'test',
               :database => 'testdb',
               :password_hash => 'pass',
-              :roles => ['b', 'a'])
-    expect(@user[:roles]).to eq(['a', 'b'])
+              :roles => [ 'b', 'a' ])
+    expect(@user[:roles]).to eq([ 'a', 'b' ])
+  end
+
+  it 'should sort database roles' do
+    # Reinitialize type with explicit unsorted roles.
+    @user = Puppet::Type.type(:mongodb_user).new(
+              :name => 'test',
+              :database => 'testdb',
+              :password_hash => 'pass',
+              :roles => [ { 'role' => 'b', 'db' => 'admin' }, { 'role' => 'a', 'db' => 'admin' } ])
+    expect(@user[:roles]).to eq([ { 'role' => 'a', 'db' => 'admin' }, { 'role' => 'b', 'db' => 'admin' } ])
+  end
+
+  roles_property = Puppet::Type.type(:mongodb_user)::Roles
+
+  describe roles_property do
+    before :each do
+      @user = Puppet::Type.type(:mongodb_user).new(
+                :name => 'test',
+                :database => 'testdb',
+                :password_hash => 'pass')
+      @property = @user.property(:roles)
+    end
+
+    it "should be insync? if the String roles are the same" do
+      @property.should = ['userAdmin', 'dbAdmin']
+      expect(@property.insync?(['userAdmin', 'dbAdmin'])).to eq(true)
+    end
+
+    it "should not be insync? if the String roles are different" do
+      @property.should = ['userAdmin', 'dbAdmin']
+      expect(@property.insync?(['userAdmin'])).to eq(false)
+    end
+
+    it "should be insync? if the Hash roles are the same" do
+      @property.should = [ { 'role' => 'userAdmin', 'db' => 'admin' }, { 'role' => 'dbAdmin', 'db' => 'admin' } ]
+      expect(@property.insync?([ { 'role' => 'userAdmin', 'db' => 'admin' }, { 'role' => 'dbAdmin', 'db' => 'admin' } ])).to eq(true)
+    end
+
+    it "should not be insync? if the Hash roles are different" do
+      @property.should = [ { 'role' => 'userAdmin', 'db' => 'admin' }, { 'role' => 'dbAdmin', 'db' => 'admin' } ]
+      expect(@property.insync?([ { 'role' => 'userAdmin', 'db' => 'admin' }, { 'role' => 'dbAdmin', 'db' => 'different_database' } ])).to eq(false)
+    end
+
+    it "should be insync? if the mixed roles are the same" do
+      @property.should = [ { 'role' => 'userAdmin', 'db' => 'admin' }, 'dbAdmin' ]
+      expect(@property.insync?([ { 'role' => 'userAdmin', 'db' => 'admin' }, 'dbAdmin' ])).to eq(true)
+    end
+
+    it "should not be insync? if the mixed roles are different" do
+      @property.should = [ { 'role' => 'userAdmin', 'db' => 'admin' }, 'dbAdmin' ]
+      expect(@property.insync?([ { 'role' => 'userAdmin', 'db' => 'admin' }, 'different_role' ])).to eq(false)
+    end
+
+    it "should be insync? if the roles are nil" do
+      @property.should = nil
+      expect(@property.insync?(nil)).to eq(true)
+    end
+
+    it "should not be insync? if the roles are different" do
+      @property.should = [ 'dbAdmin' ]
+      expect(@property.insync?(nil)).to eq(false)
+    end
   end
 
 end

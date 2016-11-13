@@ -62,14 +62,14 @@ describe Puppet::Type.type(:mongodb_user).provider(:mongodb) do
       }
       EOS
 
-      provider.expects(:mongo_eval).with("db.runCommand(#{cmd_json})", 'new_database')
+      provider.expects(:mongo_eval).with("db.getSiblingDB('new_database').runCommand(#{cmd_json})", 'new_database')
       provider.create
     end
   end
 
   describe 'destroy' do
     it 'removes a user' do
-      provider.expects(:mongo_eval).with("db.dropUser('new_user')")
+      provider.expects(:mongo_eval).with("db.getSiblingDB('new_database').dropUser('new_user')")
       provider.destroy
     end
   end
@@ -136,6 +136,13 @@ describe Puppet::Type.type(:mongodb_user).provider(:mongodb) do
         with("db.getSiblingDB('new_database').grantRolesToUser('new_user', [\"role3\"])")
 
       provider.roles=(['role2', 'role3'])
+    end
+  end
+
+  describe 'generate_storedkey' do
+    it 'should convert hashed password into a storedkey' do
+      result = provider.generate_storedkey('492b4c3b274b181cdcd49a9213b6cf6f', 'YVUS/hwrowC4U7bR2+RVMw==', 10000)
+      expect(result).to(eq('X/A7WRpDQbawbAuQIZYKrbJCoLo='))
     end
   end
 

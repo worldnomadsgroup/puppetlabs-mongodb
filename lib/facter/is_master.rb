@@ -12,7 +12,7 @@ end
 
 Facter.add('mongodb_is_master') do
   setcode do
-    if Facter::Core::Execution.which('mongo')
+    if Facter::Core::Execution.which('mongod')
       file = get_mongod_conf_file
       config = YAML.load_file(file)
       mongoPort = nil
@@ -37,7 +37,12 @@ Facter.add('mongodb_is_master') do
 
       if $?.success?
         mongo_output = Facter::Core::Execution.exec("mongo --quiet #{mongoPort} --eval \"#{e}printjson(db.isMaster())\"")
-        JSON.parse(mongo_output.gsub(/ISODate\((.+?)\)/, '\1 '))['ismaster'] ||= false
+        mongo_output.gsub!(/ObjectId\(([^)]*)\)/, '\1')
+        mongo_output.gsub!(/Timestamp\((.+?), (.+?)\)/, '{ "t": \1, "i": \2 }')
+        mongo_output.gsub!(/NumberLong\((.+?)\)/, '\1')
+        mongo_output.gsub!(/ISODate\((.+?)\)/, '\1')
+        mongo_output.gsub!(/^Error\:.+/, '')
+        JSON.parse(mongo_output)['ismaster'] ||= false
       else
         'not_responding'
       end
